@@ -21,7 +21,6 @@
 ## TLDR;
 
 ### Features description
-### Features
 
 #### 🆓 Free
 
