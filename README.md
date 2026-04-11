@@ -52,7 +52,7 @@
 - Install n8n Skills pack (pre-built Claude commands for n8n)
 - Start/stop MCP server process from the app
 - Embedded Claude Code terminal with `/mentat-n8na` command
-- Skip permissions mode for faster AI iteration
+- Optional skip permissions mode for faster AI iteration
 - AI reads your n8n setup context and builds workflows
 
 
