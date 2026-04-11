@@ -1,7 +1,7 @@
 # N8N-Mentat: self-hosted local N8N running out-of-box, with GUI, cloudflare tunnel exposure to domain and claude code MCP-server
 ![N8N-Mentat app logo](./output.png)
 
-[![Learn more... youtube.com](./md-ui-kit/btn-learn_more-youtube.png)](./output.png)
+[![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_small.png)](./output.png)⠀⠀[![Learn more... youtube.com](./md-ui-kit/btn-learn_more-youtube.png)](./output.png)
 
 | Features implemented | Pains solved | Version |
 |------|------|-----|
