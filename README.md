@@ -1,8 +1,6 @@
 # N8N-Mentat: self-hosted local N8N running out-of-box, with GUI, cloudflare tunnel exposure to domain and claude code MCP-server
 ![N8N-Mentat app logo](./output.png)
 
-[![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_small.png)](./output.png)⠀⠀[![Learn more... youtube.com](./md-ui-kit/btn-learn_more-youtube.png)](./output.png)
-
 | Features implemented | Pains solved | Version |
 |------|------|-----|
 | Run self-hosted N8N locally as GUI app with zero setup | <a target="_blank" href="https://community.n8n.io/t/an-easy-step-by-step-guide-on-how-to-self-host-n8n/6505"><img src="https://n8n.io/favicon.ico" width="24" height="24" alt="n8n"></a> <a target="_blank" href="https://community.n8n.io/t/tutorial-for-non-techies-on-how-to-install-self-hosted-n8n-in-2024/48208"><img src="https://n8n.io/favicon.ico" width="24" height="24" alt="n8n"></a> <a target="_blank" href="https://medium.com/@emmanuelolaoluwa17/the-complete-beginners-guide-to-self-hosting-n8n-free-low-cost-options-that-actually-work-1bf738e6d141"><img src="https://cdn-icons-png.flaticon.com/24/5968/5968906.png" width="24" height="24" alt="Medium"></a> <a target="_blank" href="https://medium.com/@macaroniwdcheese/how-i-set-up-and-self-hosted-n8n-with-docker-and-prepared-it-for-github-a27ed2d7b5a5"><img src="https://cdn-icons-png.flaticon.com/24/5968/5968906.png" width="24" height="24" alt="Medium"></a> | 🆓 |
@@ -10,7 +8,7 @@
 | Serve self-hosted N8N on domain via tunnel without VPS or exposure risks | <a target="_blank" href="https://community.n8n.io/t/securely-self-hosting-n8n-with-docker-cloudflare-tunnel-the-arguably-less-painful-way/93801"><img src="https://n8n.io/favicon.ico" width="24" height="24" alt="n8n"></a> | 🆓 |
 | Automate N8N flows development with AI MCP / AI Agent in claude code | <a target="_blank" href="https://community.n8n.io/t/feedback-self-hosted-pricing/22727?page=4"><img src="https://n8n.io/favicon.ico" width="24" height="24" alt="n8n"></a> <a target="_blank" href="https://dev.to/code42cate/5-awesome-n8n-alternatives-528g"><img src="https://dev.to/favicon.ico" width="24" height="24" alt="DEV.to"></a> | 🌟 |
 
-[![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_large.png)](./output.png)
+[![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_small.png)](./output.png)⠀⠀[![Learn more... youtube.com](./md-ui-kit/btn-learn_more-youtube.png)](./output.png)
 
 ## Features
 | **🆓FREE:** Get started when just opened app! Single GUI, single app window. Data stored locally | ![N8N-Mentat app logo](./output.png) |
