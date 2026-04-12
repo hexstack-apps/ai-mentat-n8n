@@ -13,7 +13,7 @@
 ## Features
 | **🆓FREE:** Get started when just opened app! Single GUI, single app window. Data stored locally | ![N8N-Mentat app logo](./output.png) |
 |------|------|
-| **🆓FREE:** Expose the local running N8N to your domain via Cloudflare tunnel in 3-clicks in GUI | ![N8N-Mentat app logo](./output.png) |
+| **🌟PRO:** Expose the local running N8N to your domain via Cloudflare tunnel in 3-clicks in GUI | ![N8N-Mentat app logo](./output.png) |
 | **🌟PRO:** Setup and run ready-to-use MCP server & custom command for Your Claude code in 2 clicks in GUI with prepared integration to build automating workflows | ![N8N-Mentat app logo](./output.png) |
 
 [![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_large.png)](./output.png)
@@ -32,6 +32,13 @@
 - Works on macOS, Windows, and Linux
 - Community edition — free and open-source n8n engine
 
+**FAQ** — Quick reference
+- n8n licensing explained (community vs enterprise)
+- How to activate enterprise features
+- Troubleshooting common issues
+
+#### 🌟 PRO
+
 **Cloudflare Tunnel** — Expose n8n to the internet securely
 - 4-step guided tunnel setup wizard
 - Install cloudflared directly from the app
@@ -39,13 +46,6 @@
 - Create named tunnel with custom domain
 - Start/stop tunnel on demand — no port forwarding, no static IP
 - Webhooks and external integrations just work
-
-**FAQ** — Quick reference
-- n8n licensing explained (community vs enterprise)
-- How to activate enterprise features
-- Troubleshooting common issues
-
-#### 🌟 PRO
 
 **Claude Code MCP** — AI-powered n8n workflow development
 - Install n8n MCP server for Claude Code with one click
