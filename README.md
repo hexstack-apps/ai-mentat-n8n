@@ -11,10 +11,10 @@
 [![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_small.png)](./output.png)⠀⠀[![Learn more... youtube.com](./md-ui-kit/btn-learn_more-youtube.png)]([./output.png](https://youtu.be/ejphBGvmENU?si=XcbMXQ2eAurP8bFQ))
 
 ## Features
-| **🆓FREE:** Get started when just opened app! Single GUI, single app window. Data stored locally | ![N8N-Mentat app logo](./n8n-install-progress.gif) |
+| **🆓FREE:** Get started when just opened app! Single GUI, single app window. Data stored locally | ![N8N-Mentat installation and setup](./n8n-install-progress.gif) |
 |------|------|
-| **🌟PRO:** Expose the local running N8N to your domain via Cloudflare tunnel in 3-clicks in GUI | ![N8N-Mentat app logo](./n8n-tunnel-progress.gif) |
-| **🌟PRO:** Setup and run ready-to-use MCP server & custom command for Your Claude code in 2 clicks in GUI with prepared integration to build automating workflows | ![N8N-Mentat app logo](./n8n-mcp-progress.gif) |
+| **🌟PRO:** Expose the local running N8N to your domain via Cloudflare tunnel in 3-clicks in GUI | ![N8N-Mentat cloudflared tunnel](./n8n-tunnel-progress.gif) |
+| **🌟PRO:** Setup and run ready-to-use MCP server & custom command for Your Claude code in 2 clicks in GUI with prepared integration to build automating workflows | ![N8N-Mentat claude code MCP server connection](./n8n-mcp-progress.gif) |
 
 [![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_large.png)](./output.png)
 
