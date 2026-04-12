@@ -14,7 +14,7 @@
 | **🆓FREE:** Get started when just opened app! Single GUI, single app window. Data stored locally | ![N8N-Mentat app logo](./output.png) |
 |------|------|
 | **🆓FREE:** Expose the local running N8N to your domain via Cloudflare tunnel in 3-clicks in GUI | ![N8N-Mentat app logo](./output.png) |
-| **🌟PRO:** Setup and run MCP server for Your Claude code in 2 clicks in GUI and with prepared integration | ![N8N-Mentat app logo](./output.png) |
+| **🌟PRO:** Setup and run ready-to-use MCP server & custom command for Your Claude code in 2 clicks in GUI with prepared integration to build automating workflows | ![N8N-Mentat app logo](./output.png) |
 
 [![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_large.png)](./output.png)
 
