@@ -1,7 +1,7 @@
 # N8N-Mentat: self-hosted local N8N running out-of-box, with GUI, cloudflare tunnel exposure to domain and claude code MCP-server
-![N8N-Mentat app logo](./output.png)
+![N8N-Mentat app logo](./assets/output.png)
 
-![N8N-Mentat progress flow](./n8n-full-progress.gif)
+![N8N-Mentat progress flow](./assets/n8n-full-progress.gif)
 
 | Features implemented | Pains solved | Version |
 |------|------|-----|
@@ -10,15 +10,15 @@
 | Serve self-hosted N8N on domain via tunnel without VPS or exposure risks | <a target="_blank" href="https://community.n8n.io/t/securely-self-hosting-n8n-with-docker-cloudflare-tunnel-the-arguably-less-painful-way/93801"><img src="https://n8n.io/favicon.ico" width="24" height="24" alt="n8n"></a> | 🆓 |
 | Automate N8N flows development with AI MCP / AI Agent in claude code | <a target="_blank" href="https://community.n8n.io/t/feedback-self-hosted-pricing/22727?page=4"><img src="https://n8n.io/favicon.ico" width="24" height="24" alt="n8n"></a> <a target="_blank" href="https://dev.to/code42cate/5-awesome-n8n-alternatives-528g"><img src="https://dev.to/favicon.ico" width="24" height="24" alt="DEV.to"></a> | 🌟 |
 
-[![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_small.png)](./output.png)⠀⠀[![Learn more... youtube.com](./md-ui-kit/btn-learn_more-youtube.png)](https://youtu.be/ejphBGvmENU?si=XcbMXQ2eAurP8bFQ)
+[![Download button MacOS, Windows, Linux](./assets/md-ui-kit/btn-download-all_small.png)](./assets/output.png)⠀⠀[![Learn more... youtube.com](./assets/md-ui-kit/btn-learn_more-youtube.png)](https://youtu.be/ejphBGvmENU?si=XcbMXQ2eAurP8bFQ)
 
 ## Features
-| **🆓FREE:** Get started when just opened app! Single GUI, single app window. Data stored locally | ![N8N-Mentat installation and setup](./n8n-install-progress.gif) |
+| **🆓FREE:** Get started when just opened app! Single GUI, single app window. Data stored locally | ![N8N-Mentat installation and setup](./assets/n8n-install-progress.gif) |
 |------|------|
-| **🌟PRO:** Expose the local running N8N to your domain via Cloudflare tunnel in 3-clicks in GUI | ![N8N-Mentat cloudflared tunnel](./n8n-tunnel-progress.gif) |
-| **🌟PRO:** Setup and run ready-to-use MCP server & custom command for Your Claude code in 2 clicks in GUI with prepared integration to build automating workflows | ![N8N-Mentat claude code MCP server connection](./n8n-mcp-progress.gif) |
+| **🌟PRO:** Expose the local running N8N to your domain via Cloudflare tunnel in 3-clicks in GUI | ![N8N-Mentat cloudflared tunnel](./assets/n8n-tunnel-progress.gif) |
+| **🌟PRO:** Setup and run ready-to-use MCP server & custom command for Your Claude code in 2 clicks in GUI with prepared integration to build automating workflows | ![N8N-Mentat claude code MCP server connection](./assets/n8n-mcp-progress.gif) |
 
-[![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_large.png)](./output.png)
+[![Download button MacOS, Windows, Linux](./assets/md-ui-kit/btn-download-all_large.png)](./assets/output.png)
 
 ## TLDR;
 
@@ -67,4 +67,4 @@
 * <a target="_blank" href="https://github.com/anthropics/claude-code"><img src="https://avatars.githubusercontent.com/u/76263028?s=48&v=4" width="50" height="50" alt="Anthropic"/> Claude Code MCP</a>
 
 ### Download at itch.io
-[![Download button MacOS, Windows, Linux](./md-ui-kit/btn-download-all_large.png)](./output.png)
+[![Download button MacOS, Windows, Linux](./assets/md-ui-kit/btn-download-all_large.png)](./assets/output.png)
