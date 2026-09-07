@@ -175,3 +175,14 @@ where the failure is "it was already dead".
 - `pty-helper.py` must stay in `asarUnpack` — python3 cannot execute a script
   inside the asar archive.
 - `certs/` is a gitignored signing input.
+- **`npm run bundle` passes the project dir explicitly.**
+  `sdk/utils/bundle-electron.js` defaults `projectDir` to
+  `path.resolve(__dirname, '..')`, which was the repo root when that file lived
+  at `__shared__/scripts/` but is `<repo>/sdk` in the submodule layout. The
+  scripts here pass `.`; **the other three ai-mentat repos still omit it, so
+  their `bundle` and `gui` scripts fail** — worth fixing in the SDK.
+- **Electron's postinstall may not fetch its binary.** If
+  `node_modules/electron/dist` is missing after `npm install`, run
+  `(cd node_modules/electron && node install.js)`.
+- To run and screenshot the GUI, use the project skill at
+  `.claude/skills/run-app/` — it documents the driver and its gotchas.

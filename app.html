@@ -3,6 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- The shipped 1.1.0 build had no policy at all, which Electron reports as
+       an "Insecure Content-Security-Policy" warning on every launch.
+       'unsafe-inline' for script is required by the recovered renderer, which
+       uses one inline <script> and inline onclick handlers; narrowing that
+       would mean rewriting recovered code rather than restoring it.
+       localhost:5678 is listed twice on purpose: frame-src for the embedded
+       n8n editor, connect-src for the readiness poll that decides when to
+       show it. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none';
+                 script-src 'self' 'unsafe-inline';
+                 style-src 'self' 'unsafe-inline';
+                 img-src 'self' data:;
+                 font-src 'self';
+                 connect-src http://localhost:5678 http://127.0.0.1:5678;
+                 frame-src http://localhost:5678 http://127.0.0.1:5678">
   <title>N8N Mentat</title>
   <link rel="stylesheet" href="app.css">
 </head>
