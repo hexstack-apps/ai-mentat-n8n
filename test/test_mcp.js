@@ -5,9 +5,28 @@ const MCP = require('../lib/mcp');
 
 // ─── Detecting an existing install ────────────────────────────────────────
 
+test('detectMcpInstalled finds a user-scope registration', () => {
+  assert.strictEqual(MCP.detectMcpInstalled({ mcpServers: { 'n8n-mcp': {} } }), true);
+});
 
+test('detectMcpInstalled finds a project-scope registration', () => {
+  // Reporting "not installed" here made the Install button re-run and
+  // duplicate the registration.
+  const config = { projects: { '/Users/x/proj': { mcpServers: { 'n8n-mcp': {} } } } };
+  assert.strictEqual(MCP.detectMcpInstalled(config), true);
+});
 
+test('detectMcpInstalled is false for an unrelated server', () => {
+  assert.strictEqual(MCP.detectMcpInstalled({ mcpServers: { 'other-mcp': {} } }), false);
+  assert.strictEqual(MCP.detectMcpInstalled({ projects: { p: { mcpServers: { other: {} } } } }), false);
+});
 
+test('detectMcpInstalled accepts raw JSON text and survives a broken file', () => {
+  assert.strictEqual(MCP.detectMcpInstalled('{"mcpServers":{"n8n-mcp":{}}}'), true);
+  for (const bad of ['{ truncated', '', null, undefined, 'null', 42, { projects: 'nope' }]) {
+    assert.strictEqual(MCP.detectMcpInstalled(bad), false, String(bad));
+  }
+});
 
 // ─── Registration arguments ───────────────────────────────────────────────
 

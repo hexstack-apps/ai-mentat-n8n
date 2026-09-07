@@ -4,10 +4,36 @@ const assert = require('node:assert');
 const path = require('path');
 const N8N = require('../lib/n8n');
 
-// PATH construction moved to sdk/utils/env and is tested there.
+// ─── PATH construction ────────────────────────────────────────────────────
+// A GUI app launched from Finder gets a launchd PATH without Homebrew or the
+// user's own bin dirs, which is how "cloudflared is not installed" was
+// reported on machines where it plainly was.
 
+test('buildPath prepends the app install locations so they win', () => {
+  const p = N8N.buildPath('/Users/x', 'darwin', '/usr/bin:/bin');
+  const parts = p.split(':');
+  assert.ok(parts.indexOf('/Users/x/.bun/bin') < parts.indexOf('/usr/bin'),
+    'app locations must come before the inherited PATH');
+  assert.ok(p.includes('/opt/homebrew/bin'), 'Homebrew must be reachable');
+  assert.ok(p.endsWith('/usr/bin:/bin'), 'the inherited PATH must survive');
+});
 
+test('buildPath falls back to a usable PATH when the environment has none', () => {
+  // Pass '' rather than undefined: undefined triggers the `process.env.PATH`
+  // default parameter, which would make this assert against the test
+  // machine's own PATH instead of the fallback.
+  const p = N8N.buildPath('/Users/x', 'darwin', '');
+  assert.ok(p.includes('/usr/bin:/bin'), 'a child process with no PATH must still find /bin');
+  assert.ok(!p.includes('::'), 'no empty PATH entry — an empty entry means cwd');
+  assert.ok(!p.endsWith(':'));
+});
 
+test('buildPath uses Windows separators and locations on win32', () => {
+  const p = N8N.buildPath('C:\\Users\\x', 'win32', 'C:\\Windows');
+  assert.ok(p.includes(';'), 'win32 separates PATH with ;');
+  assert.ok(!p.includes('/opt/homebrew/bin'), 'no POSIX paths on Windows');
+  assert.ok(p.includes(path.join('C:\\Users\\x', 'AppData', 'Local', 'Programs', 'claude-code')));
+});
 
 // ─── n8n resolution ───────────────────────────────────────────────────────
 

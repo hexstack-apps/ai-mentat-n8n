@@ -11,7 +11,6 @@
 <div class="top-bar">
   <a href="#" class="top-bar__logo" onclick="event.preventDefault(); window.electronAPI.openExternal('https://hexstack.app')">hexstack.app</a>
   <div class="top-bar__spacer"></div>
-  <button id="license-btn" class="top-bar__license-btn" style="display:none"></button>
 </div>
 
 <div class="tab-bar">
@@ -129,6 +128,9 @@
         </div>
         <div class="row">
           <button class="btn" id="setup-btn" onclick="cfSetupTunnel()">Create Tunnel &amp; DNS Route</button>
+          <!-- n8n reads WEBHOOK_URL / N8N_EDITOR_BASE_URL only at boot, so a new
+               domain does not reach a running server without this. -->
+          <button class="btn" id="n8n-restart-btn" onclick="n8nRestart()">Restart n8n to apply</button>
         </div>
         <div id="setup-msg" class="msg"></div>
       </div>
@@ -265,6 +267,10 @@
 <link rel="stylesheet" href="vendor/xterm.css">
 <script src="vendor/xterm.js"></script>
 <script src="vendor/addon-fit.js"></script>
+<!-- Loaded from the submodule directly. The sibling apps reference a copied
+     `update-ui.js` that the bundler no longer produces, so their bar silently
+     never appears. -->
+<script src="sdk/ui/update-bar.js"></script>
 
 <script>
   // Tab switching
@@ -594,13 +600,41 @@
     try {
       const r = await window.electronAPI.cloudflaredSetupTunnel(domain);
       if (r.success) {
-        setDot('setup-dot', 'green'); setMsg('setup-msg', 'Tunnel created: ' + r.url, 'success'); btn.textContent = 'Configured';
+        setDot('setup-dot', 'green');
+        // Say plainly that a restart is outstanding — the tunnel resolving is
+        // not the same as n8n knowing its public URL.
+        setMsg('setup-msg', 'Tunnel created: ' + r.url + (r.restartNeeded ? ' — ' + r.restartHint : ''),
+          r.restartNeeded ? '' : 'success');
+        btn.textContent = 'Configured';
         await loadTunnelSetupStatus();
       } else {
         setDot('setup-dot', 'red'); setMsg('setup-msg', r.error || 'Failed', 'error');
       }
     } catch (e) { setDot('setup-dot', 'red'); setMsg('setup-msg', e.message, 'error'); }
     btn.disabled = false;
+  }
+
+  async function n8nRestart() {
+    const btn = document.getElementById('n8n-restart-btn');
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Restarting…';
+    setMsg('setup-msg', 'Restarting n8n to apply the domain…', '');
+    try {
+      const r = await window.electronAPI.n8nRestart();
+      if (r.success) setMsg('setup-msg', 'n8n restarted — the public domain is live', 'success');
+      else setMsg('setup-msg', r.error || 'Restart failed', 'error');
+    } catch (e) {
+      setMsg('setup-msg', e.message, 'error');
+    }
+    btn.disabled = false; btn.textContent = label;
+  }
+
+  // Point the embedded frame at a freshly restarted server.
+  if (window.electronAPI.onN8nRestarted) {
+    window.electronAPI.onN8nRestarted(({ url }) => {
+      const frame = document.getElementById('n8n-frame');
+      if (frame && url) frame.src = url;
+    });
   }
 
   function showTunnelLog() {
@@ -666,127 +700,6 @@
     window.electronAPI.onTunnelLog((text) => appendTunnelLog(text));
   }
 
-  // ─── Licensing gate ─────────────────────────────────────────────────────
-  const PRO_TABS = ['mcp', 'tunnel'];
-  const PURCHASE_URL = 'https://hexstack-app.moonbase.sh/buy/n8n-mentat';
-  let licenseValid = false;
-  let activating = false;
-  let pollTimer = null;
-
-  function updateLicenseBtn() {
-    const btn = document.getElementById('license-btn');
-    btn.style.display = '';
-    if (licenseValid) {
-      btn.textContent = 'Remove License';
-      btn.className = 'top-bar__license-btn top-bar__license-btn--active';
-      btn.onclick = async () => {
-        // Placeholder: actual removal would delete the license file
-        btn.textContent = 'License active';
-      };
-    } else {
-      btn.innerHTML = '\u{1F31F} Get PRO Version';
-      btn.className = 'top-bar__license-btn top-bar__license-btn--cta';
-      btn.onclick = () => window.electronAPI.openExternal(PURCHASE_URL);
-    }
-  }
-
-  function showProGate(panel) {
-    if (panel.querySelector('.pro-gate')) return;
-    const tabIdx = Array.from(panel.parentElement.children).indexOf(panel);
-    const gifSrc = 'demo-gif/' + (tabIdx + 1) + '.gif';
-    panel.dataset.originalContent = panel.innerHTML;
-    panel.innerHTML = `
-      <div class="pro-gate">
-        <div class="pro-gate__preview">
-          <img class="pro-gate__gif" src="${gifSrc}" alt="Feature preview" onerror="this.style.display='none'" />
-        </div>
-        <div class="pro-gate__cta">
-          <p class="pro-gate__error" id="pro-gate-error" style="display:none"></p>
-          <button class="btn-primary pro-gate__btn" id="pro-gate-activate">Obtain PRO License</button>
-          <p class="pro-gate__hint">31-day free trial. One-time purchase.
-            <a href="#" onclick="event.preventDefault(); window.electronAPI.openExternal('${PURCHASE_URL}')">Purchase the license</a>
-          </p>
-        </div>
-      </div>`;
-    panel.querySelector('#pro-gate-activate').addEventListener('click', startActivation);
-  }
-
-  function removeProGates() {
-    document.querySelectorAll('.panel').forEach(p => {
-      if (p.dataset.originalContent) {
-        p.innerHTML = p.dataset.originalContent;
-        delete p.dataset.originalContent;
-      }
-    });
-  }
-
-  async function startActivation() {
-    if (activating) return;
-    activating = true;
-    const btn = document.querySelector('#pro-gate-activate');
-    const err = document.querySelector('#pro-gate-error');
-    if (btn) btn.textContent = 'Waiting for activation...';
-    if (btn) btn.disabled = true;
-    try {
-      const res = await window.electronAPI.licenseActivate();
-      if (!res.ok || !res.browser || !res.requestData) {
-        if (err) { err.textContent = res.error || 'Failed to start activation'; err.style.display = ''; }
-        activating = false;
-        if (btn) { btn.textContent = 'Obtain PRO License'; btn.disabled = false; }
-        return;
-      }
-      window.electronAPI.openExternal(res.browser);
-      pollLicense(res.requestData, 0);
-    } catch (e) {
-      if (err) { err.textContent = e.message; err.style.display = ''; }
-      activating = false;
-      if (btn) { btn.textContent = 'Obtain PRO License'; btn.disabled = false; }
-    }
-  }
-
-  function pollLicense(requestData, attempts) {
-    if (attempts > 100) { activating = false; return; }
-    pollTimer = setTimeout(async () => {
-      try {
-        const res = await window.electronAPI.licensePoll(requestData);
-        if (res.ok && res.activated) {
-          licenseValid = true;
-          activating = false;
-          removeProGates();
-          updateLicenseBtn();
-          return;
-        }
-      } catch {}
-      pollLicense(requestData, attempts + 1);
-    }, 3000);
-  }
-
-  async function checkLicense() {
-    try {
-      const res = await window.electronAPI.licenseValidate();
-      licenseValid = res.ok && res.valid;
-    } catch { licenseValid = false; }
-    updateLicenseBtn();
-    if (!licenseValid) {
-      PRO_TABS.forEach(tabId => {
-        const panel = document.getElementById('tab-' + tabId);
-        if (panel) showProGate(panel);
-      });
-    }
-  }
-
-  // Override tab switching to enforce license gate
-  const origTabClick = document.querySelectorAll('.tab-bar button');
-  origTabClick.forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (!licenseValid && PRO_TABS.includes(btn.dataset.tab)) {
-        const panel = document.getElementById('tab-' + btn.dataset.tab);
-        if (panel && !panel.querySelector('.pro-gate')) showProGate(panel);
-      }
-    });
-  });
-
-  checkLicense();
 </script>
 </body>
 </html>

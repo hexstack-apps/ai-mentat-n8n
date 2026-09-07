@@ -17,17 +17,10 @@ const fs = require('fs');
 const os = require('os');
 
 const N8N = require('./lib/n8n');
+const CF = require('./lib/cloudflared');
 const MCP = require('./lib/mcp');
 const { loadOrCreateKey, KEY_FILE } = require('./lib/encryption-key');
-const { quiet, attempt } = require('./sdk/utils/failsafe');
-const { shellEnv: sdkShellEnv, run, tryRun } = require('./sdk/utils/env');
-const { killProcess, createCleanup } = require('./sdk/utils/proc');
-const { createSettingsStore } = require('./sdk/logic/settings');
-const { registerOpenExternal, openPathHandler } = require('./sdk/logic/shell');
-const { registerPtyIpc, resolveHelperPath } = require('./sdk/logic/pty');
-const { registerTunnelIpc } = require('./sdk/logic/tunnel-ipc');
-const { detectMcpInstalled, removeAllScopes } = require('./sdk/logic/mcp');
-const { createWindow: createWindow_ } = require('./sdk/ui/window');
+const { quiet, quietAsync, attempt } = require('./lib/failsafe');
 const { resolveDataDir } = require('./sdk/utils/data-dir');
 const { setupAutoUpdate } = require('./sdk/logic/auto-update');
 
@@ -81,22 +74,48 @@ let ptyProcess;
 let mcpProcess;
 let tunnelProcess;
 let tunnelUrl = null;
+let cleanupDone = false;
 // Set across a deliberate restart so n8n's exit handler does not close the
 // window while we are the ones who killed it.
 let n8nRestarting = false;
 
 // ─── Settings ─────────────────────────────────────────────────────────────
 
-// n8n keeps its own filename: the other apps use settings.json, and renaming
-// this one would silently discard every existing user's settings.
-const settings = createSettingsStore({ dir: dataDir, file: 'mentat-settings.json' });
-const loadSettings = () => settings.load();
-const saveSettings = (patch) => settings.save(patch);
+function loadSettings() {
+  return quiet('settings.read', () => JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')), {});
+}
+
+function saveSettings(data) {
+  const merged = { ...loadSettings(), ...data };
+  // Losing this write silently means the next launch forgets a domain the user
+  // really did apply, so the failure is recorded rather than swallowed.
+  attempt('settings.write', () => fs.writeFileSync(SETTINGS_FILE, JSON.stringify(merged, null, 2)));
+  return merged;
+}
 
 // ─── Child-process environment ────────────────────────────────────────────
 
 function shellEnv() {
-  return sdkShellEnv({ home: os.homedir() });
+  return { ...process.env, PATH: N8N.buildPath(os.homedir()) };
+}
+
+/**
+ * Run a binary with an argument ARRAY — never a composed command string.
+ * User input (an n8n API key, a domain) reaches several of these calls, and
+ * the shipped build interpolated it into `execSync`, so a value containing a
+ * shell metacharacter was executed instead of passed.
+ */
+function run(bin, args, opts = {}) {
+  return execFileSync(bin, args, {
+    encoding: 'utf8',
+    ...opts,
+    env: { ...shellEnv(), ...opts.env },
+  });
+}
+
+/** `run` for calls whose failure is expected and non-fatal. */
+function tryRun(op, bin, args, opts = {}) {
+  return quiet(op, () => run(bin, args, opts), null);
 }
 
 // ─── n8n lifecycle ────────────────────────────────────────────────────────
@@ -278,23 +297,26 @@ async function restartN8n() {
 // ─── Window ───────────────────────────────────────────────────────────────
 
 function createWindow() {
-  mainWindow = createWindow_({
-    BrowserWindow,
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     title: 'N8N Mentat',
     icon: path.join(__dirname, 'icon.png'),
-    preload: path.join(__dirname, 'preload.js'),
-    load: { file: path.join(__dirname, 'app.html') },
-    // n8n serves X-Frame-Options and a frame-ancestors CSP that would refuse
-    // to render in the window, and its session cookies need SameSite=None to
-    // survive the cross-document embed. Scoped to n8n's own origin.
-    headerRewrite: {
-      urls: [`http://localhost:${N8N_PORT}/*`, `http://127.0.0.1:${N8N_PORT}/*`],
-      stripFrameHeaders: true,
-      sameSiteNone: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+      // The shipped build set webSecurity:false to get n8n into the iframe.
+      // It is not needed for that — framing is governed by the response
+      // headers stripped below — and turning it off disables the same-origin
+      // policy for the whole renderer. Escape hatch for a local diagnosis
+      // only; never ship with it set.
+      webSecurity: process.env.MENTAT_ALLOW_INSECURE !== '1',
+      allowRunningInsecureContent: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
-    onReady: (win) => setupAutoUpdate(win),
+    titleBarStyle: 'default',
+    show: false,
   });
 
   mainWindow.on('closed', () => {
@@ -302,11 +324,62 @@ function createWindow() {
     cleanup();
   });
   mainWindow.webContents.on('did-fail-load', (_, code, desc) => console.error('Load failed:', desc));
+
+  // n8n serves X-Frame-Options and a frame-ancestors CSP that would refuse to
+  // render inside the app window, and its session cookies need SameSite=None
+  // to survive the cross-document embed. Scoped to n8n's own origin: the
+  // shipped build applied this to <all_urls>, which stripped the CSP of every
+  // page the app could ever load.
+  const n8nOrigins = [`http://localhost:${N8N_PORT}/*`, `http://127.0.0.1:${N8N_PORT}/*`];
+  mainWindow.webContents.session.webRequest.onHeadersReceived({ urls: n8nOrigins }, (details, callback) => {
+    const headers = { ...details.responseHeaders };
+    for (const key of Object.keys(headers)) {
+      const lower = key.toLowerCase();
+      if (lower === 'x-frame-options' || lower === 'content-security-policy') delete headers[key];
+      if (lower === 'set-cookie') {
+        headers[key] = headers[key].map((cookie) => (
+          /samesite/i.test(cookie)
+            ? cookie.replace(/samesite=\w+/i, 'SameSite=None')
+            : `${cookie}; SameSite=None; Secure`
+        ));
+      }
+    }
+    callback({ responseHeaders: headers });
+  });
+
+  mainWindow.loadFile(path.join(__dirname, 'app.html'));
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    if (!app.isPackaged) mainWindow.webContents.openDevTools();
+    setupAutoUpdate(mainWindow);
+    console.log('N8N Mentat window opened');
+  });
 }
 
 // ─── Shutdown ─────────────────────────────────────────────────────────────
 
-const cleanup = createCleanup(() => {
+function killProcess(proc, name) {
+  if (!proc || proc.killed) return;
+  console.log(`Terminating ${name} (pid ${proc.pid})...`);
+  attempt(`kill.${name}.term`, () => {
+    if (process.platform === 'win32') run('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+    else process.kill(-proc.pid, 'SIGTERM');
+  });
+  setTimeout(() => {
+    // Killing an already-dead process is the expected case here, so this one
+    // stays quiet by design.
+    try {
+      if (!proc.killed) {
+        if (process.platform !== 'win32') process.kill(-proc.pid, 'SIGKILL');
+        proc.kill('SIGKILL');
+      }
+    } catch { /* already gone */ }
+  }, 3000);
+}
+
+function cleanup() {
+  if (cleanupDone) return;
+  cleanupDone = true;
   console.log('Cleaning up...');
   killProcess(n8nProcess, 'n8n');
   killProcess(mcpProcess, 'mcp');
@@ -316,7 +389,7 @@ const cleanup = createCleanup(() => {
     ptyProcess = null;
   }
   setTimeout(() => app.quit(), 1000);
-});
+}
 
 // ─── MCP (Claude Code) ────────────────────────────────────────────────────
 
@@ -350,15 +423,19 @@ function writeMentatCommand() {
 }
 
 function removeMcpFromAllScopes() {
-  removeAllScopes(MCP.N8N_MCP_SERVER, { run, cwd: os.homedir() });
+  const home = os.homedir();
+  for (const scope of MCP.MCP_SCOPES) {
+    tryRun(`mcp.remove.${scope}`, 'claude',
+      ['mcp', 'remove', MCP.N8N_MCP_SERVER, '-s', scope],
+      { timeout: 15000, stdio: 'pipe', cwd: home });
+  }
 }
 
 ipcMain.handle('mcp:status', async () => {
   const settings = loadSettings();
   const claudeJson = path.join(os.homedir(), '.claude.json');
-  const fromConfig = detectMcpInstalled(
+  const fromConfig = MCP.detectMcpInstalled(
     quiet('mcp.readClaudeJson', () => fs.readFileSync(claudeJson, 'utf8'), null),
-    MCP.N8N_MCP_SERVER,
   );
   const skillsDir = path.join(os.homedir(), '.claude', 'skills', 'n8n-skills');
   return {
@@ -439,21 +516,95 @@ ipcMain.handle('mcp:stop', async () => {
 
 // ─── Embedded terminal ────────────────────────────────────────────────────
 
-const localClaude = path.join(os.homedir(), '.local', 'bin', 'claude');
-registerPtyIpc(ipcMain, {
-  getWindow: () => mainWindow,
-  command: fs.existsSync(localClaude) ? localClaude : 'claude',
-  args: ['/mentat-n8na'],
-  cwd: os.homedir(),
-  env: { ...shellEnv(), TERM: 'xterm-256color' },
-  helperPath: resolveHelperPath(path.join(__dirname, 'sdk', 'utils'), { isPackaged: app.isPackaged }),
-  deps: { spawn },
+ipcMain.handle('pty:spawn', async (_, cols, rows, skipPerms) => {
+  try {
+    if (ptyProcess) {
+      attempt('pty.killPrevious', () => ptyProcess.kill());
+      ptyProcess = null;
+    }
+    const home = os.homedir();
+    const env = {
+      ...shellEnv(),
+      TERM: 'xterm-256color',
+      COLUMNS: String(cols || 80),
+      LINES: String(rows || 24),
+    };
+    const claudeArgsTail = skipPerms
+      ? ['--dangerously-skip-permissions', '/mentat-n8na']
+      : ['/mentat-n8na'];
+
+    if (process.platform === 'win32') {
+      ptyProcess = spawn('claude', claudeArgsTail, { stdio: ['pipe', 'pipe', 'pipe'], cwd: home, env });
+    } else {
+      const localClaude = path.join(home, '.local', 'bin', 'claude');
+      const bin = fs.existsSync(localClaude) ? localClaude : 'claude';
+      // pty-helper.py is asarUnpack'd: a python script inside the archive is
+      // not a real path python3 can execute.
+      let helperPath = path.join(__dirname, 'pty-helper.py');
+      if (app.isPackaged || __dirname.includes('app.asar')) {
+        helperPath = helperPath.replace('app.asar', 'app.asar.unpacked');
+      }
+      ptyProcess = spawn('python3', [helperPath, bin, ...claudeArgsTail], {
+        stdio: ['pipe', 'pipe', 'pipe'], cwd: home, env,
+      });
+      ptyProcess.on('error', (e) => console.error('PTY spawn error:', e.message));
+    }
+
+    const relay = (data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('pty:data', data.toString());
+    };
+    ptyProcess.stdout.on('data', relay);
+    ptyProcess.stderr.on('data', relay);
+    ptyProcess.on('exit', (code) => {
+      console.log('PTY exited with code:', code);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('pty:exit');
+      ptyProcess = null;
+    });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.on('pty:write', (_, data) => {
+  if (ptyProcess && !ptyProcess.killed && typeof data === 'string') ptyProcess.stdin.write(data);
+});
+
+ipcMain.on('pty:resize', () => {
+  // The helper re-reads the window size on SIGWINCH.
+  if (ptyProcess && ptyProcess.pid && process.platform !== 'win32') {
+    attempt('pty.resize', () => process.kill(ptyProcess.pid, 'SIGWINCH'));
+  }
+});
+
+ipcMain.on('pty:kill', () => {
+  if (!ptyProcess) return;
+  if (process.platform !== 'win32') attempt('pty.killGroup', () => process.kill(-ptyProcess.pid, 'SIGTERM'));
+  attempt('pty.kill', () => ptyProcess.kill());
+  ptyProcess = null;
 });
 
 // ─── Shell / app surface ──────────────────────────────────────────────────
 
-registerOpenExternal(ipcMain, shell);
-ipcMain.handle('shell:open-n8n-data', openPathHandler(shell, n8nFolder));
+ipcMain.handle('shell:open-external', async (_, url) => {
+  // Allowlist the scheme: a renderer-supplied string reaching openExternal can
+  // otherwise launch file:// or a custom protocol handler.
+  if (typeof url !== 'string') return { success: false };
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { success: false };
+  }
+  if (parsed.protocol !== 'https:') return { success: false };
+  await shell.openExternal(parsed.toString());
+  return { success: true };
+});
+
+ipcMain.handle('shell:open-n8n-data', async () => {
+  await shell.openPath(n8nFolder);
+  return { success: true };
+});
 
 ipcMain.handle('n8n:restart', async () => restartN8n());
 
@@ -467,15 +618,194 @@ ipcMain.handle('n8n:status', async () => ({
 
 // ─── Cloudflare tunnel ────────────────────────────────────────────────────
 
-registerTunnelIpc(ipcMain, {
-  getWindow: () => mainWindow,
-  tunnelName: 'mentat',
-  services: [{ name: 'web', scheme: 'http', port: N8N_PORT }],
-  settings,
-  configPath: path.join(os.homedir(), '.cloudflared', 'config.yml'),
-  credentialsDir: path.join(os.homedir(), '.cloudflared'),
-  deps: { run, tryRun, spawn, fs },
+const cloudflaredConfigPath = () => path.join(os.homedir(), '.cloudflared', 'config.yml');
+
+function readTunnelConfig() {
+  const text = quiet('cloudflared.readConfig', () => fs.readFileSync(cloudflaredConfigPath(), 'utf8'), null);
+  if (text === null) return CF.parseTunnelConfig('', N8N_PORT);
+  // A parse failure used to report "no hostnames configured" for a perfectly
+  // good tunnel, so it gets recorded.
+  return quiet('cloudflared.parseConfig', () => CF.parseTunnelConfig(text, N8N_PORT),
+    CF.parseTunnelConfig('', N8N_PORT));
+}
+
+ipcMain.handle('cloudflared:check', async () => {
+  if (tryRun('cloudflared.versionNpx', 'npx', ['cloudflared', '--version'], { timeout: 15000, stdio: 'pipe' }) !== null) {
+    return { installed: true };
+  }
+  if (tryRun('cloudflared.version', 'cloudflared', ['--version'], { timeout: 5000, stdio: 'pipe' }) !== null) {
+    return { installed: true };
+  }
+  return { installed: false };
 });
+
+ipcMain.handle('cloudflared:install', async () => {
+  try {
+    run('npx', ['bun', 'add', '-g', 'cloudflared'], { timeout: 60000 });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: (e.stderr && e.stderr.toString().trim()) || e.message };
+  }
+});
+
+ipcMain.handle('cloudflared:auth-status', async () => ({
+  authenticated: fs.existsSync(path.join(os.homedir(), '.cloudflared', 'cert.pem')),
+}));
+
+ipcMain.handle('cloudflared:login', async () => new Promise((resolve) => {
+  let proc;
+  try {
+    proc = spawn('cloudflared', ['tunnel', 'login'], { stdio: 'pipe', detached: true, env: shellEnv() });
+  } catch (e) {
+    return resolve({ success: false, error: e.message });
+  }
+  let output = '';
+  const collect = (d) => { output += d.toString(); };
+  proc.stdout.on('data', collect);
+  proc.stderr.on('data', collect);
+  proc.on('error', (e) => resolve({ success: false, error: e.message }));
+  const timer = setTimeout(() => {
+    attempt('cloudflared.login.killTimeout', () => proc.kill());
+    resolve({ success: false, error: 'Login timed out' });
+  }, 300000);
+  proc.on('exit', (code) => {
+    clearTimeout(timer);
+    if (code === 0) resolve({ success: true });
+    else resolve({ success: false, error: output.trim() || `Exit code ${code}` });
+  });
+}));
+
+ipcMain.handle('cloudflared:tunnel-status', async () => {
+  const cfg = readTunnelConfig();
+  return { configured: cfg.configured, tunnelName: cfg.tunnel, hostname: cfg.hostname };
+});
+
+ipcMain.handle('cloudflared:setup-tunnel', async (_, domain) => {
+  const hostname = typeof domain === 'string' ? domain.trim() : '';
+  if (!hostname) return { success: false, error: 'Domain is required' };
+  if (!CF.isValidHostname(hostname)) {
+    return { success: false, error: `"${hostname}" is not a valid hostname — use something like n8n.example.com` };
+  }
+
+  try {
+    const tunnelName = 'mentat';
+    const cfDir = path.join(os.homedir(), '.cloudflared');
+    let tunnelId = null;
+
+    const list = tryRun('cloudflared.list', 'cloudflared', ['tunnel', 'list', '-o', 'json'],
+      { timeout: 15000, stdio: 'pipe' });
+    if (list) {
+      const tunnels = quiet('cloudflared.parseList', () => JSON.parse(list), []);
+      const existing = Array.isArray(tunnels) ? tunnels.find((t) => t && t.name === tunnelName) : null;
+      if (existing) {
+        if (fs.existsSync(path.join(cfDir, `${existing.id}.json`))) {
+          tunnelId = existing.id;
+        } else {
+          // The tunnel exists server-side but its credentials file is gone, so
+          // it can never be run from this machine. Recreate rather than fail.
+          console.log('Tunnel exists but credentials missing locally, recreating...');
+          tryRun('cloudflared.delete', 'cloudflared', ['tunnel', 'delete', '-f', tunnelName],
+            { timeout: 15000, stdio: 'pipe' });
+        }
+      }
+    }
+
+    if (!tunnelId) {
+      const out = run('cloudflared', ['tunnel', 'create', tunnelName], { timeout: 15000, stdio: 'pipe' });
+      tunnelId = CF.parseTunnelId(out);
+      if (!tunnelId) return { success: false, error: `Failed to parse tunnel ID from: ${out}` };
+    }
+
+    fs.mkdirSync(cfDir, { recursive: true });
+    fs.writeFileSync(cloudflaredConfigPath(), CF.renderTunnelConfig({
+      tunnelId,
+      credentialsFile: path.join(cfDir, `${tunnelId}.json`),
+      hostname,
+      port: N8N_PORT,
+    }));
+
+    try {
+      run('cloudflared', ['tunnel', 'route', 'dns', '--overwrite-dns', tunnelId, hostname],
+        { timeout: 15000, stdio: 'pipe' });
+    } catch (e) {
+      const err = (e.stderr && e.stderr.toString()) || '';
+      if (!err.includes('already exists')) {
+        return { success: false, error: `DNS route failed: ${err.trim() || e.message}` };
+      }
+    }
+
+    // Persist the domain and hand n8n its public URL. Without this the tunnel
+    // resolves but every webhook n8n hands out still says localhost.
+    const previous = loadSettings();
+    saveSettings({ publicDomain: hostname });
+    const restartNeeded = N8N.needsRestartForDomain(previous, { publicDomain: hostname });
+
+    return {
+      success: true,
+      tunnelId,
+      hostname,
+      url: `https://${hostname}`,
+      restartNeeded,
+      restartHint: restartNeeded ? 'Restart n8n to apply the new public domain.' : null,
+    };
+  } catch (e) {
+    return { success: false, error: (e.stderr && e.stderr.toString().trim()) || e.message };
+  }
+});
+
+ipcMain.handle('tunnel:start', async () => {
+  if (tunnelProcess && !tunnelProcess.killed) return { success: true, url: tunnelUrl };
+  try {
+    const { hostname } = readTunnelConfig();
+    if (!hostname) return { success: false, error: 'No tunnel configured — complete setup first' };
+
+    tunnelProcess = spawn('cloudflared', ['tunnel', 'run'], { stdio: 'pipe', detached: true, env: shellEnv() });
+    tunnelUrl = null;
+
+    const sendLog = (text) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tunnel:log', text);
+    };
+    let connected = false;
+    const onOutput = (data) => {
+      const text = data.toString();
+      sendLog(text);
+      if (!connected && CF.isTunnelConnectedLine(text)) {
+        connected = true;
+        tunnelUrl = `https://${hostname}`;
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('tunnel:url-update', tunnelUrl);
+      }
+    };
+    tunnelProcess.stdout.on('data', onOutput);
+    tunnelProcess.stderr.on('data', onOutput);
+    tunnelProcess.on('exit', (code) => {
+      sendLog(`\n[cloudflared exited with code ${code}]\n`);
+      tunnelProcess = null;
+      tunnelUrl = null;
+    });
+
+    for (let i = 0; i < 20 && !tunnelUrl; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    if (!tunnelUrl) return { success: false, error: 'Named tunnel failed to connect' };
+    return { success: true, url: tunnelUrl };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('tunnel:stop', async () => {
+  if (tunnelProcess && !tunnelProcess.killed) {
+    tunnelProcess.kill('SIGTERM');
+    tunnelProcess = null;
+    tunnelUrl = null;
+  }
+  return { success: true };
+});
+
+ipcMain.handle('tunnel:status', async () => ({
+  running: !!(tunnelProcess && !tunnelProcess.killed),
+  url: tunnelUrl,
+}));
 
 // ─── App lifecycle ────────────────────────────────────────────────────────
 
