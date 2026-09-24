@@ -1,0 +1,24 @@
+node_modules/
+/dist/
+/electron-main.bundle.js
+.DS_Store
+
+# signing material — never commit
+certs/
+
+# generated / local state
+app-updates-repo/
+.n8n/
+
+# per-install n8n credential encryption key — never commit.
+# A shared key would let anyone decrypt credentials from any install.
+n8n-encryption-key
+mentat-settings.json
+
+# environment files — never commit
+.env
+.env.*
+
+# copied out of the SDK at bundle time (sdk/ui/update-bar.js).
+# Anchored to the root so the source copy in sdk/ stays tracked.
+/update-ui.js

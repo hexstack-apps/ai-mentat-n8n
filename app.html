@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- The shipped 1.1.0 build had no policy at all, which Electron reports as
+       an "Insecure Content-Security-Policy" warning on every launch.
+       'unsafe-inline' for script is required by the recovered renderer, which
+       uses one inline <script> and inline onclick handlers; narrowing that
+       would mean rewriting recovered code rather than restoring it.
+       localhost:5678 is listed twice on purpose: frame-src for the embedded
+       n8n editor, connect-src for the readiness poll that decides when to
+       show it. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none';
+                 script-src 'self' 'unsafe-inline';
+                 style-src 'self' 'unsafe-inline';
+                 img-src 'self' data:;
+                 font-src 'self';
+                 connect-src http://localhost:5678 http://127.0.0.1:5678;
+                 frame-src http://localhost:5678 http://127.0.0.1:5678">
+  <title>N8N Mentat</title>
+  <link rel="stylesheet" href="sdk/ui/base.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="#" class="top-bar__logo" onclick="event.preventDefault(); window.electronAPI.openExternal('https://hexstack.app')">hexstack.app</a>
+  <div class="top-bar__spacer"></div>
+</div>
+
+<div class="tab-bar">
+  <button class="active" data-tab="n8n">N8N Localhost</button>
+  <button data-tab="mcp">Claude Code MCP</button>
+  <button data-tab="tunnel">Cloudflare Tunnel</button>
+  <button data-tab="faq">FAQ</button>
+</div>
+
+<div class="tab-content">
+  <!-- Tab 1: n8n -->
+  <div id="tab-n8n" class="panel active">
+    <div id="n8n-loading" class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-icon">N8N</div>
+        <div id="n8n-loading-text">Preparing n8n engine...</div>
+        <div class="progress-bar-track">
+          <div id="n8n-progress" class="progress-bar-fill"></div>
+        </div>
+        <div id="n8n-loading-detail" class="loading-detail"></div>
+        <pre id="n8n-install-log" class="install-log hidden"></pre>
+        <div class="loading-detail loading-detail--permanent">Progressing with initial install of N8N codebase, this may take several minutes. Next starts will reuse it and be fast.</div>
+      </div>
+    </div>
+    <iframe id="n8n-frame" src="about:blank"></iframe>
+  </div>
+
+  <!-- Tab 2: Claude Code MCP -->
+  <div id="tab-mcp" class="panel">
+    <div class="panel-scroll">
+      <h2 class="section-title">Claude Code MCP Server</h2>
+
+      <div class="card">
+        <h3><span id="mcp-dot" class="status-dot"></span> n8n MCP Server</h3>
+        <div class="row">
+          <label>API Key</label>
+          <input type="text" id="mcp-api-key" placeholder="Optional — enables n8n API access">
+        </div>
+        <div class="row">
+          <button class="btn" id="mcp-install-btn" onclick="mcpInstall()">Install n8n MCP Server</button>
+          <button class="btn danger" id="mcp-uninstall-btn" onclick="mcpUninstall()" style="display:none">Uninstall</button>
+        </div>
+        <div id="mcp-install-msg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <h3><span id="skills-dot" class="status-dot"></span> n8n Skills for Claude Code</h3>
+        <div class="row">
+          <button class="btn" id="skills-btn" onclick="installSkills()">Install n8n Skills</button>
+        </div>
+        <div id="skills-msg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <h3><span id="mcp-run-dot" class="status-dot"></span> MCP Server Process</h3>
+        <div class="row">
+          <button class="btn" id="mcp-run-btn" onclick="mcpRun()">Start MCP Server</button>
+          <button class="btn danger" id="mcp-stop-btn" onclick="mcpStop()" style="display:none">Stop</button>
+        </div>
+        <div id="mcp-run-msg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <h3>Claude Code Terminal</h3>
+        <div class="row">
+          <button class="btn secondary" onclick="openClaude()">Open Claude Code</button>
+          <label style="min-width:auto;display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="skip-perms" style="accent-color:#ff6d5a"> Skip permissions</label>
+        </div>
+      </div>
+    </div>
+
+    <div id="terminal-overlay" class="terminal-overlay">
+      <div class="terminal-popup">
+        <div class="terminal-header">
+          <span>Claude Code</span>
+          <button class="terminal-close" onclick="closeClaude()">&times;</button>
+        </div>
+        <div id="terminal-container" class="terminal-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 3: Cloudflare Tunnel -->
+  <div id="tab-tunnel" class="panel">
+    <div class="panel-scroll">
+      <h2 class="section-title">Cloudflare Tunnel</h2>
+
+      <!-- Step 1: Install cloudflared -->
+      <div class="card" id="step-install">
+        <h3><span id="cf-dot" class="status-dot"></span> Step 1 — Install cloudflared</h3>
+        <div class="row">
+          <button class="btn" id="cf-install-btn" onclick="cfInstall()">Install cloudflared</button>
+        </div>
+        <div id="cf-msg" class="msg"></div>
+      </div>
+
+      <!-- Step 2: Authenticate -->
+      <div class="card" id="step-auth" style="display:none">
+        <h3><span id="auth-dot" class="status-dot"></span> Step 2 — Authenticate with Cloudflare</h3>
+        <p class="step-desc">Log in to your Cloudflare account. This opens a browser window where you authorize cloudflared to manage tunnels on your account.</p>
+        <p class="step-desc">Need an account? <a href="#" onclick="window.electronAPI.openExternal('https://dash.cloudflare.com/sign-up'); return false">Sign up at Cloudflare</a> (free plan works). You'll also need a <a href="#" onclick="window.electronAPI.openExternal('https://developers.cloudflare.com/fundamentals/setup/manage-domains/add-site/'); return false">domain added to Cloudflare</a>.</p>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="auth-btn" onclick="cfLogin()">Authenticate</button>
+        </div>
+        <div id="auth-msg" class="msg"></div>
+      </div>
+
+      <!-- Step 3: Setup named tunnel -->
+      <div class="card" id="step-setup" style="display:none">
+        <h3><span id="setup-dot" class="status-dot"></span> Step 3 — Create Named Tunnel</h3>
+        <p class="step-desc">Enter the hostname for your Mentat tunnel. This domain must be <a href="#" onclick="window.electronAPI.openExternal('https://developers.cloudflare.com/fundamentals/setup/manage-domains/add-site/'); return false">managed by Cloudflare DNS</a>.</p>
+        <div class="row" style="margin-top:10px">
+          <label>Hostname</label>
+          <input type="text" id="tunnel-domain" placeholder="e.g. mentat.yourdomain.com">
+        </div>
+        <div class="row">
+          <button class="btn" id="setup-btn" onclick="cfSetupTunnel()">Create Tunnel &amp; DNS Route</button>
+          <!-- n8n reads WEBHOOK_URL / N8N_EDITOR_BASE_URL only at boot, so a new
+               domain does not reach a running server without this. -->
+          <button class="btn" id="n8n-restart-btn" onclick="n8nRestart()">Restart n8n to apply</button>
+        </div>
+        <div id="setup-msg" class="msg"></div>
+      </div>
+
+      <!-- Step 4: Run tunnel -->
+      <div class="card" id="step-run" style="display:none">
+        <h3><span id="tunnel-dot" class="status-dot"></span> Tunnel</h3>
+        <div id="tunnel-configured-host" class="step-desc" style="margin-bottom:10px"></div>
+        <div class="row">
+          <button class="btn" id="tunnel-start-btn" onclick="tunnelStart()">Start Tunnel</button>
+          <button class="btn danger" id="tunnel-stop-btn" onclick="tunnelStop()" style="display:none">Stop Tunnel</button>
+        </div>
+        <div id="tunnel-msg" class="msg"></div>
+        <div id="tunnel-url-row" class="row" style="display:none;margin-top:10px">
+          <label>URL</label>
+          <div class="url-display" id="tunnel-url"></div>
+          <button class="icon-btn" onclick="copyTunnelUrl()" title="Copy URL">&#x1F4CB;</button>
+          <button class="icon-btn" onclick="openTunnelUrl()" title="Open in browser">&#x1F517;</button>
+        </div>
+      </div>
+
+      <div id="tunnel-log-card" class="card" style="display:none">
+        <h3>cloudflared output</h3>
+        <pre id="tunnel-log" class="tunnel-log"></pre>
+      </div>
+    </div>
+  </div>
+  <!-- Tab 4: FAQ -->
+  <div id="tab-faq" class="panel">
+    <div class="panel-scroll">
+      <h2 class="section-title">Frequently Asked Questions</h2>
+
+      <div class="card" style="display:flex; align-items:center; gap:14px;">
+        <div style="flex:1">
+          <div style="color:#fff; font-size:14px; font-weight:500;">n8n Data Directory</div>
+          <div style="color:#888; font-size:12px; margin-top:4px;">Workflows, credentials, and database are stored here. This folder persists across app updates.</div>
+        </div>
+        <button class="btn" onclick="window.electronAPI.openN8nData()">Open my n8n-data folder</button>
+      </div>
+
+      <details class="faq-item">
+        <summary>Initial start and login</summary>
+        <div class="faq-body">
+          <p><strong>First launch</strong></p>
+          <p>When you open Mentat for the first time, n8n will start automatically on <code>localhost:5678</code>. The initial startup may take 30–60 seconds while n8n initializes its database and compiles the UI.</p>
+
+          <p><strong>Creating your account</strong></p>
+          <p>Once n8n loads, you'll see the setup screen. Create an owner account with your email and a password. This account is stored locally in the <code>.n8n/</code> directory — it is not sent to any external server.</p>
+
+          <p><strong>Subsequent launches</strong></p>
+          <p>On every launch after the first, Mentat starts n8n and opens the UI automatically. Your workflows, credentials, and settings persist between sessions in the <code>.n8n/</code> folder next to the application.</p>
+
+          <p><strong>If n8n doesn't load</strong></p>
+          <ul>
+            <li>Check that port 5678 is not in use by another process</li>
+            <li>Restart the app — Mentat automatically kills stale n8n processes on startup</li>
+            <li>Check the Electron console (View → Toggle Developer Tools) for error messages</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary>How to provide n8n API key to Claude Code</summary>
+        <div class="faq-body">
+          <p><strong>Why an API key?</strong></p>
+          <p>The n8n MCP server can work in two modes: <em>documentation-only</em> (no API key needed) or <em>full access</em> (requires API key). With full access, Claude Code can create, update, execute, and manage your n8n workflows directly.</p>
+
+          <p><strong>Step 1: Generate an API key in n8n</strong></p>
+          <ol>
+            <li>Go to the <strong>n8n</strong> tab in Mentat</li>
+            <li>Click your user icon (bottom-left) → <strong>Settings</strong></li>
+            <li>Go to <strong>API</strong> section</li>
+            <li>Click <strong>Create API Key</strong></li>
+            <li>Copy the generated key</li>
+          </ol>
+
+          <p><strong>Step 2: Install MCP server with the key</strong></p>
+          <ol>
+            <li>Go to the <strong>Claude Code MCP</strong> tab in Mentat</li>
+            <li>Paste the API key in the <strong>API Key</strong> field</li>
+            <li>Click <strong>Install n8n MCP Server</strong></li>
+          </ol>
+          <p>The key is stored in your Claude Code configuration (<code>~/.claude.json</code>) as an environment variable for the MCP server.</p>
+
+          <p><strong>Updating the key later</strong></p>
+          <p>To change the API key: click <strong>Uninstall</strong>, enter the new key, then click <strong>Install</strong> again.</p>
+        </div>
+      </details>
+
+      <details class="faq-item">
+        <summary>How to set up licensing on self-hosted n8n</summary>
+        <div class="faq-body">
+          <p><strong>Community vs Enterprise</strong></p>
+          <p>N8N Mentat runs the <strong>community edition</strong> of n8n, which is free and open-source under the Sustainable Use License. Most features work out of the box without a license key.</p>
+
+          <p><strong>When do you need a license?</strong></p>
+          <p>Some enterprise features require an activation key:</p>
+          <ul>
+            <li>LDAP / SAML single sign-on</li>
+            <li>Role-based access control (RBAC) with multiple users</li>
+            <li>Source control (Git) integration in the UI</li>
+            <li>External secrets management</li>
+            <li>Log streaming</li>
+            <li>Worker mode for horizontal scaling</li>
+          </ul>
+          <p>If you only use n8n for personal automation, you likely don't need a license.</p>
+
+          <p><strong>Getting a license key</strong></p>
+          <ol>
+            <li>Go to <a href="#" onclick="window.electronAPI.openExternal('https://n8n.io/pricing'); return false">n8n.io/pricing</a></li>
+            <li>Choose a plan and sign up</li>
+            <li>You'll receive an <strong>activation key</strong> via email or from the n8n dashboard</li>
+          </ol>
+
+          <p><strong>Activating the license</strong></p>
+          <ol>
+            <li>Open n8n in the <strong>N8N Localhost</strong> tab</li>
+            <li>Go to <strong>Settings</strong> (gear icon, bottom-left)</li>
+            <li>Click <strong>Usage and plan</strong></li>
+            <li>Enter your activation key and click <strong>Activate</strong></li>
+          </ol>
+          <p>The license is stored in the <code>.n8n/</code> directory and persists across restarts.</p>
+
+          <p><strong>Environment variable activation</strong></p>
+          <p>Alternatively, you can set the license key via environment variable before starting n8n. Add <code>N8N_LICENSE_ACTIVATION_KEY=your-key</code> to the n8n startup environment. In Mentat, this would require editing <code>electron-main.js</code> to add the env var to the n8n spawn call.</p>
+        </div>
+      </details>
+
+    </div>
+  </div>
+
+</div>
+
+<link rel="stylesheet" href="sdk/vendor/xterm.css">
+<script src="sdk/vendor/xterm.js"></script>
+<script src="sdk/vendor/addon-fit.js"></script>
+<!-- Loaded from the submodule directly. The sibling apps reference a copied
+     `update-ui.js` that the bundler no longer produces, so their bar silently
+     never appears. -->
+<script src="sdk/ui/update-bar.js"></script>
+
+<script>
+  // Tab switching
+  document.querySelectorAll('.tab-bar button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // n8n loading — listen for progress from main process, poll for HTTP readiness
+  const n8nFrame = document.getElementById('n8n-frame');
+  const n8nLoading = document.getElementById('n8n-loading');
+  const n8nLoadingText = document.getElementById('n8n-loading-text');
+  const n8nLoadingDetail = document.getElementById('n8n-loading-detail');
+  const n8nProgress = document.getElementById('n8n-progress');
+  let n8nPollAttempt = 0;
+  let n8nPhase = 'init';
+
+  function setProgress(pct, text, detail) {
+    if (pct !== null) n8nProgress.style.width = pct + '%';
+    if (text) n8nLoadingText.textContent = text;
+    if (detail) n8nLoadingDetail.textContent = detail;
+  }
+
+  // Real progress from main process (install phase)
+  const installLog = document.getElementById('n8n-install-log');
+  if (window.electronAPI.onN8nProgress) {
+    window.electronAPI.onN8nProgress((data) => {
+      n8nPhase = data.phase;
+      if (data.phase === 'installing') {
+        setProgress(30, 'Installing n8n...', null);
+        installLog.classList.remove('hidden');
+        if (data.detail) {
+          installLog.textContent += data.detail + '\n';
+          installLog.scrollTop = installLog.scrollHeight;
+        }
+      } else if (data.phase === 'starting') {
+        setProgress(70, 'Starting n8n server...', data.detail);
+        installLog.classList.add('hidden');
+      } else if (data.phase === 'error') {
+        setProgress(0, 'Error', data.detail);
+        n8nProgress.style.background = '#f44336';
+      }
+    });
+  }
+
+  // Poll for HTTP readiness — pause counting while n8n is still being installed
+  async function pollN8nReady() {
+    // Don't count poll attempts during install phase
+    if (n8nPhase === 'installing') {
+      setTimeout(pollN8nReady, 2000);
+      return;
+    }
+
+    n8nPollAttempt++;
+
+    // Slowly advance progress while waiting for server
+    if (n8nPhase !== 'error') {
+      const pct = Math.min(95, 70 + n8nPollAttempt * 1.5);
+      setProgress(pct, null, null);
+    }
+
+    try {
+      const res = await fetch('http://localhost:5678/', { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        // Wait for n8n to serve HTML (not just API readiness)
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('text/html')) {
+          // API is up but frontend not yet — keep polling
+          setTimeout(pollN8nReady, 2000);
+          return;
+        }
+        setProgress(100, 'Loading interface...', 'Connected to n8n');
+        n8nFrame.src = 'http://localhost:5678/';
+        n8nFrame.addEventListener('load', () => n8nLoading.classList.add('hidden'), { once: true });
+        setTimeout(() => n8nLoading.classList.add('hidden'), 5000);
+        return;
+      }
+    } catch {
+      // Not ready yet
+    }
+
+    if (n8nPollAttempt < 60) {
+      setTimeout(pollN8nReady, 2000);
+    } else {
+      setProgress(0, 'n8n failed to start', 'Check if port 5678 is available and try restarting the app');
+      n8nProgress.style.background = '#f44336';
+    }
+  }
+
+  pollN8nReady();
+
+  // Helpers
+  function setDot(id, color) { document.getElementById(id).className = 'status-dot ' + color; }
+  function setMsg(id, text, type) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = 'msg ' + (type || '');
+  }
+  function toggle(showId, hideId) {
+    document.getElementById(showId).style.display = '';
+    document.getElementById(hideId).style.display = 'none';
+  }
+
+  // Load initial status
+  async function loadStatus() {
+    try {
+      const s = await window.electronAPI.mcpStatus();
+      if (s.mcpInstalled) { setDot('mcp-dot', 'green'); toggle('mcp-uninstall-btn', 'mcp-install-btn'); }
+      else { setDot('mcp-dot', 'red'); toggle('mcp-install-btn', 'mcp-uninstall-btn'); }
+      setDot('skills-dot', s.skillsInstalled ? 'green' : 'red');
+      if (s.skillsInstalled) document.getElementById('skills-btn').textContent = 'Reinstall n8n Skills';
+      setDot('mcp-run-dot', s.mcpRunning ? 'green' : 'red');
+      if (s.mcpRunning) toggle('mcp-stop-btn', 'mcp-run-btn');
+      else toggle('mcp-run-btn', 'mcp-stop-btn');
+    } catch (e) { console.error('status load failed', e); }
+
+    await loadTunnelSetupStatus();
+  }
+  loadStatus();
+
+  async function loadTunnelSetupStatus() {
+    // Step 1: cloudflared installed?
+    let installed = false;
+    try {
+      const cf = await window.electronAPI.cloudflaredCheck();
+      installed = cf.installed;
+      setDot('cf-dot', installed ? 'green' : 'red');
+      if (installed) document.getElementById('cf-install-btn').textContent = 'Installed';
+    } catch { setDot('cf-dot', 'red'); }
+
+    // Step 2: authenticated?
+    let authenticated = false;
+    if (installed) {
+      document.getElementById('step-auth').style.display = '';
+      try {
+        const auth = await window.electronAPI.cloudflaredAuthStatus();
+        authenticated = auth.authenticated;
+        setDot('auth-dot', authenticated ? 'green' : 'red');
+        if (authenticated) document.getElementById('auth-btn').textContent = 'Authenticated';
+      } catch { setDot('auth-dot', 'red'); }
+    }
+
+    // Step 3: tunnel configured?
+    let configured = false;
+    let hostname = null;
+    if (authenticated) {
+      document.getElementById('step-setup').style.display = '';
+      try {
+        const ts = await window.electronAPI.cloudflaredTunnelStatus();
+        configured = ts.configured;
+        hostname = ts.hostname;
+        setDot('setup-dot', configured ? 'green' : 'red');
+        if (configured) {
+          document.getElementById('tunnel-domain').value = hostname;
+          document.getElementById('setup-btn').textContent = 'Configured';
+        }
+      } catch { setDot('setup-dot', 'red'); }
+    }
+
+    // Step 4: run tunnel
+    if (configured) {
+      document.getElementById('step-run').style.display = '';
+      document.getElementById('tunnel-configured-host').textContent = 'Configured hostname: ' + hostname;
+      try {
+        const t = await window.electronAPI.tunnelStatus();
+        setDot('tunnel-dot', t.running ? 'green' : 'red');
+        if (t.running) {
+          toggle('tunnel-stop-btn', 'tunnel-start-btn');
+          if (t.url) { document.getElementById('tunnel-url').textContent = t.url; document.getElementById('tunnel-url-row').style.display = ''; }
+        }
+      } catch { setDot('tunnel-dot', 'red'); }
+    }
+  }
+
+  // MCP actions
+  async function mcpInstall() {
+    const btn = document.getElementById('mcp-install-btn');
+    btn.disabled = true; setDot('mcp-dot', 'amber'); setMsg('mcp-install-msg', 'Installing...', '');
+    try {
+      const apiKey = document.getElementById('mcp-api-key').value.trim();
+      const r = await window.electronAPI.mcpInstall(apiKey || null);
+      if (r.success) {
+        setDot('mcp-dot', 'green'); setMsg('mcp-install-msg', 'Installed', 'success');
+        toggle('mcp-uninstall-btn', 'mcp-install-btn');
+      } else {
+        setDot('mcp-dot', 'red'); setMsg('mcp-install-msg', r.error || 'Failed', 'error');
+        btn.disabled = false;
+      }
+    } catch (e) { setDot('mcp-dot', 'red'); setMsg('mcp-install-msg', e.message, 'error'); btn.disabled = false; }
+  }
+
+  async function mcpUninstall() {
+    const btn = document.getElementById('mcp-uninstall-btn');
+    btn.disabled = true; setDot('mcp-dot', 'amber'); setMsg('mcp-install-msg', 'Uninstalling...', '');
+    try {
+      const r = await window.electronAPI.mcpUninstall();
+      if (r.success) {
+        setDot('mcp-dot', 'red'); setMsg('mcp-install-msg', 'Uninstalled', 'success');
+        toggle('mcp-install-btn', 'mcp-uninstall-btn');
+        document.getElementById('mcp-install-btn').disabled = false;
+      } else {
+        setDot('mcp-dot', 'green'); setMsg('mcp-install-msg', r.error || 'Failed', 'error');
+        btn.disabled = false;
+      }
+    } catch (e) { setDot('mcp-dot', 'green'); setMsg('mcp-install-msg', e.message, 'error'); btn.disabled = false; }
+  }
+
+  async function installSkills() {
+    const btn = document.getElementById('skills-btn');
+    btn.disabled = true; setDot('skills-dot', 'amber'); setMsg('skills-msg', 'Installing...', '');
+    try {
+      const r = await window.electronAPI.mcpInstallSkills();
+      if (r.success) {
+        setDot('skills-dot', 'green'); setMsg('skills-msg', 'Installed', 'success');
+        btn.textContent = 'Reinstall n8n Skills';
+      } else {
+        setDot('skills-dot', 'red'); setMsg('skills-msg', r.error || 'Failed', 'error');
+      }
+    } catch (e) { setDot('skills-dot', 'red'); setMsg('skills-msg', e.message, 'error'); }
+    btn.disabled = false;
+  }
+
+  async function mcpRun() {
+    const btn = document.getElementById('mcp-run-btn');
+    btn.disabled = true; setDot('mcp-run-dot', 'amber'); setMsg('mcp-run-msg', 'Starting...', '');
+    try {
+      const r = await window.electronAPI.mcpRun();
+      if (r.success) {
+        setDot('mcp-run-dot', 'green'); setMsg('mcp-run-msg', 'Running', 'success');
+        toggle('mcp-stop-btn', 'mcp-run-btn');
+      } else {
+        setDot('mcp-run-dot', 'red'); setMsg('mcp-run-msg', r.error || 'Failed', 'error');
+        btn.disabled = false;
+      }
+    } catch (e) { setDot('mcp-run-dot', 'red'); setMsg('mcp-run-msg', e.message, 'error'); btn.disabled = false; }
+  }
+
+  async function mcpStop() {
+    try {
+      await window.electronAPI.mcpStop();
+      setDot('mcp-run-dot', 'red'); setMsg('mcp-run-msg', 'Stopped', '');
+      toggle('mcp-run-btn', 'mcp-stop-btn');
+      document.getElementById('mcp-run-btn').disabled = false;
+    } catch (e) { setMsg('mcp-run-msg', e.message, 'error'); }
+  }
+
+  let term = null;
+  let fitAddon = null;
+
+  async function openClaude() {
+    const overlay = document.getElementById('terminal-overlay');
+    const container = document.getElementById('terminal-container');
+    overlay.classList.add('visible');
+
+    if (term) { term.dispose(); term = null; }
+    container.innerHTML = '';
+
+    term = new Terminal({ cursorBlink: true, fontSize: 14, theme: {
+      background: '#0d0d1a', foreground: '#e0e0e0', cursor: '#ff6d5a',
+    }});
+    fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(container);
+    setTimeout(() => fitAddon.fit(), 50);
+
+    try {
+      const skipPerms = document.getElementById('skip-perms').checked;
+      const r = await window.electronAPI.ptySpawn(term.cols, term.rows, skipPerms);
+      if (!r.success) { term.write('\r\n\x1b[31mFailed: ' + (r.error || '') + '\x1b[0m\r\n'); return; }
+    } catch (e) { term.write('\r\n\x1b[31m' + e.message + '\x1b[0m\r\n'); return; }
+
+    term.focus();
+    term.onData((data) => window.electronAPI.ptyWrite(data));
+    term.onResize(({ cols, rows }) => window.electronAPI.ptyResize(cols, rows));
+    window.electronAPI.onPtyData((data) => { if (term) term.write(data); });
+    window.electronAPI.onPtyExit(() => { if (term) term.write('\r\n\x1b[90m[process exited]\x1b[0m\r\n'); });
+
+    new ResizeObserver(() => { if (fitAddon) fitAddon.fit(); }).observe(container);
+  }
+
+  function closeClaude() {
+    document.getElementById('terminal-overlay').classList.remove('visible');
+    window.electronAPI.ptyKill();
+    if (term) { term.dispose(); term = null; fitAddon = null; }
+  }
+
+  // Tunnel setup actions
+  async function cfInstall() {
+    const btn = document.getElementById('cf-install-btn');
+    btn.disabled = true; setDot('cf-dot', 'amber'); setMsg('cf-msg', 'Installing...', '');
+    try {
+      const r = await window.electronAPI.cloudflaredInstall();
+      if (r.success) {
+        setDot('cf-dot', 'green'); setMsg('cf-msg', 'Installed', 'success'); btn.textContent = 'Installed';
+        await loadTunnelSetupStatus();
+      } else {
+        setDot('cf-dot', 'red'); setMsg('cf-msg', r.error || 'Failed', 'error');
+      }
+    } catch (e) { setDot('cf-dot', 'red'); setMsg('cf-msg', e.message, 'error'); }
+    btn.disabled = false;
+  }
+
+  async function cfLogin() {
+    const btn = document.getElementById('auth-btn');
+    btn.disabled = true; setDot('auth-dot', 'amber'); setMsg('auth-msg', 'Opening browser for login — complete auth there...', '');
+    try {
+      const r = await window.electronAPI.cloudflaredLogin();
+      if (r.success) {
+        setDot('auth-dot', 'green'); setMsg('auth-msg', 'Authenticated', 'success'); btn.textContent = 'Authenticated';
+        await loadTunnelSetupStatus();
+      } else {
+        setDot('auth-dot', 'red'); setMsg('auth-msg', r.error || 'Failed', 'error');
+      }
+    } catch (e) { setDot('auth-dot', 'red'); setMsg('auth-msg', e.message, 'error'); }
+    btn.disabled = false;
+  }
+
+  async function cfSetupTunnel() {
+    const btn = document.getElementById('setup-btn');
+    const domain = document.getElementById('tunnel-domain').value.trim();
+    if (!domain) { setMsg('setup-msg', 'Enter a hostname', 'error'); return; }
+    btn.disabled = true; setDot('setup-dot', 'amber'); setMsg('setup-msg', 'Creating tunnel and DNS route...', '');
+    try {
+      const r = await window.electronAPI.cloudflaredSetupTunnel(domain);
+      if (r.success) {
+        setDot('setup-dot', 'green');
+        // Say plainly that a restart is outstanding — the tunnel resolving is
+        // not the same as n8n knowing its public URL.
+        setMsg('setup-msg', 'Tunnel created: ' + r.url + (r.restartNeeded ? ' — ' + r.restartHint : ''),
+          r.restartNeeded ? '' : 'success');
+        btn.textContent = 'Configured';
+        await loadTunnelSetupStatus();
+      } else {
+        setDot('setup-dot', 'red'); setMsg('setup-msg', r.error || 'Failed', 'error');
+      }
+    } catch (e) { setDot('setup-dot', 'red'); setMsg('setup-msg', e.message, 'error'); }
+    btn.disabled = false;
+  }
+
+  async function n8nRestart() {
+    const btn = document.getElementById('n8n-restart-btn');
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Restarting…';
+    setMsg('setup-msg', 'Restarting n8n to apply the domain…', '');
+    try {
+      const r = await window.electronAPI.n8nRestart();
+      if (r.success) setMsg('setup-msg', 'n8n restarted — the public domain is live', 'success');
+      else setMsg('setup-msg', r.error || 'Restart failed', 'error');
+    } catch (e) {
+      setMsg('setup-msg', e.message, 'error');
+    }
+    btn.disabled = false; btn.textContent = label;
+  }
+
+  // Point the embedded frame at a freshly restarted server.
+  if (window.electronAPI.onN8nRestarted) {
+    window.electronAPI.onN8nRestarted(({ url }) => {
+      const frame = document.getElementById('n8n-frame');
+      if (frame && url) frame.src = url;
+    });
+  }
+
+  function showTunnelLog() {
+    document.getElementById('tunnel-log').textContent = '';
+    document.getElementById('tunnel-log-card').style.display = '';
+  }
+  function hideTunnelLog() {
+    document.getElementById('tunnel-log-card').style.display = 'none';
+  }
+  function appendTunnelLog(text) {
+    const el = document.getElementById('tunnel-log');
+    el.textContent += text;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function tunnelStart() {
+    const btn = document.getElementById('tunnel-start-btn');
+    btn.disabled = true; setDot('tunnel-dot', 'amber'); setMsg('tunnel-msg', 'Starting tunnel...', '');
+    showTunnelLog();
+    try {
+      const r = await window.electronAPI.tunnelStart();
+      if (r.success) {
+        setDot('tunnel-dot', 'green'); setMsg('tunnel-msg', 'Running', 'success');
+        toggle('tunnel-stop-btn', 'tunnel-start-btn');
+        if (r.url) { document.getElementById('tunnel-url').textContent = r.url; document.getElementById('tunnel-url-row').style.display = ''; }
+      } else {
+        setDot('tunnel-dot', 'red'); setMsg('tunnel-msg', r.error || 'Failed', 'error'); btn.disabled = false;
+      }
+    } catch (e) { setDot('tunnel-dot', 'red'); setMsg('tunnel-msg', e.message, 'error'); btn.disabled = false; }
+  }
+
+  async function tunnelStop() {
+    try {
+      await window.electronAPI.tunnelStop();
+      setDot('tunnel-dot', 'red'); setMsg('tunnel-msg', 'Stopped', '');
+      toggle('tunnel-start-btn', 'tunnel-stop-btn');
+      document.getElementById('tunnel-start-btn').disabled = false;
+      document.getElementById('tunnel-url-row').style.display = 'none';
+      hideTunnelLog();
+    } catch (e) { setMsg('tunnel-msg', e.message, 'error'); }
+  }
+
+  function copyTunnelUrl() {
+    const url = document.getElementById('tunnel-url').textContent;
+    if (url) { navigator.clipboard.writeText(url); setMsg('tunnel-msg', 'Copied!', 'success'); }
+  }
+  function openTunnelUrl() {
+    const url = document.getElementById('tunnel-url').textContent;
+    if (url) window.electronAPI.openExternal(url);
+  }
+
+  // Listen for tunnel URL updates (async from cloudflared stdout)
+  if (window.electronAPI.onTunnelUrl) {
+    window.electronAPI.onTunnelUrl((url) => {
+      document.getElementById('tunnel-url').textContent = url;
+      document.getElementById('tunnel-url-row').style.display = '';
+      setMsg('tunnel-msg', 'Running', 'success');
+    });
+  }
+
+  // Stream cloudflared stdout/stderr into the log panel
+  if (window.electronAPI.onTunnelLog) {
+    window.electronAPI.onTunnelLog((text) => appendTunnelLog(text));
+  }
+
+</script>
+</body>
+</html>

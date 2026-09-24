@@ -1,0 +1,10 @@
+/* n8n has no styles of its own.
+ *
+ * Every selector this app used is in sdk/ui/base.css — n8n's stylesheet WAS
+ * the family original, and all 74 of its rules are shared by at least three
+ * apps. app.html loads base.css directly.
+ *
+ * Add app-specific rules here if n8n ever grows UI the other apps do not have.
+ * Do not copy a rule back from base.css to override it; change base.css, or
+ * the two drift.
+ */

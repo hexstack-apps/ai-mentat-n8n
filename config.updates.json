@@ -1,0 +1,23 @@
+{
+  "updatesRepoUrl": "",
+  "butlerApiKeyEnvVar": "BUTLER_API_KEY",
+  "apps": {
+    "mentat-n8na": {
+      "dir": ".",
+      "productName": "Hexstack Mentat N8NA",
+      "itchIo": {
+        "user": "hexstack-app",
+        "game": "mentat-n8na",
+        "channels": {
+          "mac": "osx",
+          "win": "windows",
+          "linux": "linux"
+        }
+      },
+      "updatesRepo": {
+        "subdir": "mentat-n8na",
+        "feedUrl": ""
+      }
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "name": "ai-mentat-n8n",
+  "version": "1.1.0",
+  "description": "Hexstack Mentat N8NA \u2014 self-hosted n8n desktop app with Cloudflare tunnel and Claude Code MCP",
+  "main": "electron-main.bundle.js",
+  "productName": "Hexstack Mentat N8NA",
+  "shop_link": "https://hexstack.app/mentat-n8na/",
+  "itch_io": {
+    "user": "hexstack-app",
+    "game": "mentat-n8na"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "run": "npm run setup && node sdk/utils/bundle-electron.js && electron electron-main.bundle.js",
+    "build": "node scripts/build-app.js",
+    "check": "npm run build && node scripts/start-built.js",
+    "gui": "node sdk/utils/bundle-electron.js && electron electron-main.bundle.js",
+    "test": "node --test 'test/*.js'",
+    "test:mutation": "sh test/discriminates.sh",
+    "bundle": "node sdk/utils/bundle-electron.js",
+    "build:mac": "node sdk/utils/bundle-electron.js && electron-builder --mac dmg --universal -c.mac.identity=null",
+    "build:mac:signed": "node sdk/utils/bundle-electron.js && APPLE_KEYCHAIN_PROFILE=CCO-notary electron-builder --mac dmg --universal",
+    "build:mac:store": "node sdk/utils/bundle-electron.js && electron-builder --mac mas",
+    "build:win": "node sdk/utils/bundle-electron.js && electron-builder --win msi",
+    "build:linux": "node sdk/utils/bundle-electron.js && electron-builder --linux deb",
+    "build:all": "npm run build:mac && npm run build:win && npm run build:linux",
+    "dist": "npm run build:all",
+    "publish": "node sdk/logic/publish.js --app=mentat-n8na",
+    "release": "node sdk/logic/release.js"
+  },
+  "keywords": [
+    "n8n",
+    "automation",
+    "self-hosted",
+    "cloudflare-tunnel",
+    "mcp",
+    "electron",
+    "mentat"
+  ],
+  "author": "HexStack",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.16",
+    "npm": ">=10.0.0"
+  },
+  "signing": {
+    "appName": "Hexstack Mentat N8NA",
+    "bundleId": "app.hexstack.mentat-n8na",
+    "minMacOS": "10.15",
+    "developerIdApplication": "Developer ID Application: Roman Chuvilev (A646WU4GA4)",
+    "notaryProfile": "CCO-notary"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.63.0"
+  },
+  "build": {
+    "appId": "app.hexstack.mentat-n8na",
+    "productName": "Hexstack Mentat N8NA",
+    "publish": {
+      "provider": "generic",
+      "url": ""
+    },
+    "directories": {
+      "output": "/.hexstack-app/ai-mentat-n8n"
+    },
+    "artifactName": "mentat-n8na-${version}.${ext}",
+    "electronVersion": "44.0.0",
+    "buildDependenciesFromSource": false,
+    "npmRebuild": false,
+    "asarUnpack": [
+      "sdk/utils/pty-helper.py"
+    ],
+    "files": [
+      "electron-main.bundle.js",
+      "preload.js",
+      "app.html",
+      "app.css",
+      "icon.png",
+      "sdk/vendor/",
+      "sdk/ui/base.css",
+      "sdk/ui/update-bar.js",
+      "sdk/utils/pty-helper.py",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron-main.bundle.js"
+    },
+    "mac": {
+      "icon": "icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": "Roman Chuvilev (A646WU4GA4)",
+      "notarize": true,
+      "hardenedRuntime": true,
+      "entitlements": "sdk/build/entitlements.mac.plist",
+      "entitlementsInherit": "sdk/build/entitlements.mac.plist",
+      "target": [
+        "dmg"
+      ]
+    },
+    "mas": {
+      "identity": "3rd Party Mac Developer Application: Roman Chuvilev (A646WU4GA4)",
+      "provisioningProfile": "./certs/mas-mentat-n8na.provisionprofile",
+      "entitlements": "sdk/build/entitlements.mas.plist",
+      "entitlementsInherit": "sdk/build/entitlements.mas.inherit.plist"
+    },
+    "win": {
+      "icon": "icon.png",
+      "target": [
+        "msi"
+      ]
+    },
+    "msi": {
+      "artifactName": "mentat-n8na-${version}.msi"
+    },
+    "linux": {
+      "icon": "icon.png",
+      "target": [
+        "deb"
+      ],
+      "category": "Development"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hexstack-apps/ai-mentat-n8n.git"
+  }
+}
